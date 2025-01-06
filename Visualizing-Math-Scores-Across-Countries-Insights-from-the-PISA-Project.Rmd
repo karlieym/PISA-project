@@ -1,0 +1,315 @@
+---
+title: "Visualizing Math Scores Across Countries: Insights from the PISA Project"
+author: Karlie(Yuxin) Meng
+output:
+  html_document:
+    df_print: paged
+date: "2024-10-09"
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Descriptive visualizations
+
+## Analysis preparation
+
+1.  load the PISA 2015 dataset.
+
+    PISA is a global assessment conducted every three years, targeting
+    15-year-olds. It evaluates how well students perform in maths,
+    reading and science. This is an open-sourced dataset, avaliable
+    at:<https://www.oecd.org/en/data/datasets/pisa-2015-database.html>.
+
+```{r}
+# load the pisa dataset
+library(data.table)
+pisa <- fread("/Users/yuxinkarlie/Downloads/pisa2015.csv", na.strings = "")
+```
+
+2.  Analysis preparation
+
+    Including data cleaning and data manipulation.
+
+```{r}
+# Rename some variables that's needed later
+# Convert a dichtomous item (yes/no) to numeric scoring
+bin.to.num <- function(x){
+  if (is.na(x)) NA
+  else if (x == "Yes") 1L
+  else if (x == "No") 0L
+}
+pisa[, `:=` 
+     (female = ifelse(ST004D01T == "Female", 1, 0),
+       sex = ST004D01T,
+       
+       # At my house we have ...
+       desk = sapply(ST011Q01TA, bin.to.num),
+       own.room = sapply(ST011Q02TA, bin.to.num),
+       quiet.study = sapply(ST011Q03TA, bin.to.num),
+       computer = sapply(ST011Q04TA, bin.to.num),
+       software = sapply(ST011Q05TA, bin.to.num),
+       internet = sapply(ST011Q06TA, bin.to.num),
+       lit = sapply(ST011Q07TA, bin.to.num),
+       poetry = sapply(ST011Q08TA, bin.to.num),
+       art = sapply(ST011Q09TA, bin.to.num),
+       book.sch = sapply(ST011Q10TA, bin.to.num),
+       tech.book = sapply(ST011Q11TA, bin.to.num),
+       dict = sapply(ST011Q12TA, bin.to.num),
+       art.book = sapply(ST011Q16NA, bin.to.num))]
+pisa[, `:=`
+     (math = rowMeans(pisa[, c(paste0("PV", 1:10, "MATH"))], na.rm = TRUE),
+       reading = rowMeans(pisa[, c(paste0("PV", 1:10, "READ"))], na.rm = TRUE),
+       science = rowMeans(pisa[, c(paste0("PV", 1:10, "SCIE"))], na.rm = TRUE))]
+
+# filter the columns we want
+country <- c("United States", "Canada", "Mexico", "B-S-J-G (China)", "Japan",
+             "Korea", "Germany", "Italy", "France", "Brazil", "Colombia", "Uruguay",
+             "Australia", "New Zealand", "Jordan", "Israel", "Lebanon")
+
+dat <- pisa[CNT %in% country,
+            .(CNT, OECD, CNTSTUID, W_FSTUWT, sex, female,
+              ST001D01T, computer, software, internet,
+              ST011Q05TA, ST071Q02NA, ST071Q01NA, ST123Q02NA,
+              ST082Q01NA, ST119Q01NA, ST119Q05NA, ANXTEST,
+              COOPERATE, BELONG,  EMOSUPS, HOMESCH, ENTUSE,
+              ICTHOME, ICTSCH, WEALTH, PARED, TMINS, ESCS,
+              TEACHSUP, TDTEACH, IBTEACH, SCIEEFF,
+              math, reading, science)
+            ]
+#Add additional variables
+# Let's create additional variables that we will use for visualizations
+dat <- dat[, `:=` (
+  # New grade variable
+  grade = (as.numeric(sapply(ST001D01T, function(x) {
+  if(x=="Grade 7") "7"
+  else if (x=="Grade 8") "8"
+  else if (x=="Grade 9") "9"
+  else if (x=="Grade 10") "10"
+  else if (x=="Grade 11") "11"
+  else if (x=="Grade 12") "12"
+  else if (x=="Grade 13") NA_character_
+  else if (x=="Ungraded") NA_character_}))),
+  # Total learning time as hours
+  learning = round(TMINS/60, 0),
+  # Regions for selected countries
+  Region = (sapply(CNT, function(x) {
+  if(x %in% c("Canada", "United States", "Mexico")) "N. America"
+    else if (x %in% c("Colombia", "Brazil", "Uruguay")) "S. America"
+    else if (x %in% c("Japan", "B-S-J-G (China)", "Korea")) "Asia"
+    else if (x %in% c("Germany", "Italy", "France")) "Europe"
+    else if (x %in% c("Australia", "New Zealand")) "Australia"
+    else if (x %in% c("Israel", "Jordan", "Lebanon")) "Middle-East"
+    }))
+  )]
+
+```
+
+```{r}
+# Check the cleaned dataset
+head(dat)
+```
+
+## Plot the distribution(line plot, violin plot and boxplot) in ggplot.
+
+### Dashed line plot
+
+```{r}
+# Dashed line plot
+library('ggplot2')
+means <- dat[,
+             .(math = mean(math)),
+             by = CNT]
+
+ggplot(data = dat,
+       mapping = aes(x = reorder(CNT, math), y = math)) +
+  geom_point(aes(color = Region)) +
+  labs(x=NULL, y="Math Scores") +
+  coord_flip() +
+  stat_summary(fun.y = mean, colour = "blue", geom = "point", 
+               shape = 18, size = 2) +
+  geom_hline(yintercept = 493, linetype="dashed", color = "red", size = 1) +
+  theme_bw()
+```
+
+### Violin plot
+
+```{r}
+# Violin pLot
+means <- dat[,
+             .(math = mean(math)),
+             by = CNT]
+ggplot(data = dat,
+       mapping = aes(x = reorder(CNT, math), y = math)) +
+  geom_violin(aes(color = Region)) +
+  labs(x=NULL, y="Math Scores") +
+  coord_flip() +
+  stat_summary(fun.y = mean, colour = "blue", geom = "point", 
+               shape = 18, size = 2) +
+  geom_hline(yintercept = 493, linetype="dashed", color = "red", size = 1) +
+  theme_bw()
+```
+
+### Box plot
+
+```{r}
+# Boxlot
+ggplot(data = dat,
+       mapping = aes(x = reorder(CNT, math), y = math, fill = Region)) +
+  geom_boxplot() +
+  labs(x=NULL, y="Math Scores") +
+  coord_flip() +
+  geom_hline(yintercept = 493, linetype="dashed", color = "red", size = 1) +
+  stat_summary(fun.y = mean, colour = "blue", geom = "point", 
+               shape = 18, size = 2.5) +
+  theme_bw()
+```
+
+-   The graphs showed math scores of different country, with colors
+    representing different regions.
+
+-   The red dashed line shows the average math score of countries in
+    2015.
+
+-   The blue square dots indicate the mean.
+
+-   The violin or boxplot could be better compared to line plot, because
+    is shows the distribution information of the data, like visualizing
+    the shape, mean, quantlies and outliers.
+
+## Interactive math-by-region density plot
+
+```{r}
+library(plotly)
+density_plot <- ggplot(data = dat,
+       mapping = aes(x = math, fill = Region)) +
+  geom_density(alpha = 0.5) +
+  labs(x = "Science Scores", y = "Count",
+       title = "Math Scores by Gender and Region") +
+  facet_grid(. ~ sex) +
+  theme_bw()
+ggplotly(density_plot)
+```
+
+#### **Hover your mouse on the graph to show detailed information of each region** **!**
+
+# Relationship of math score and other factors
+
+## Gender Differences and Correlations Among Reading, Science, and Math Scores
+
+```{r}
+library('GGally')
+dat_small <- dat[,.SD[sample(.N, min(500,.N))], by = Region]
+
+ggpairs(data = dat_small,
+        mapping = aes(color = Region),
+        columns = c("reading", "science", "math", "sex"),
+        upper = list(continuous = wrap("cor", size = 2.5))
+        )
+```
+
+Interpretation:
+
+-   Generally there is no obvious gender differences across different
+    subjects, but one noticeable difference in science, which is that
+    the male are have more students falling behind.
+
+-   Reading, science, or math are highly correlated to each other.
+
+## Exploring the Relationship Between Math Scores and ICT Usage in North America
+
+Explanation of the variables used:
+
+-   HOMESCH: students' use of ICT outside of school for school work.
+
+-   ENTUSE: students' use of ICT outside of school for leisure or
+    entertainment purposes.
+
+-   ICTHOME: the availability of ICT resources at students' homes.(This
+    index is derived from students' responses to questions about the
+    presence of various ICT devices in their homes, such as desktop
+    computers, laptops, tablets, and internet connections. Each item is
+    assigned a score, and the combined responses are scaled to create
+    the ICTHOME index, ranging from 1-10).
+
+-   ICTSCH: the availability and use of ICT resources at school.
+
+```{r}
+dat_Namerica <- dat[ Region == "N. America"]
+
+ggpairs(data = dat_Namerica,
+        mapping = aes(color = sex),
+        columns = c("math", "HOMESCH", "ENTUSE", "ICTHOME", "ICTSCH"),
+        upper = list(continuous = wrap("cor", size = 2.5))
+        )
+```
+
+-   The correlations among variables are all significant.
+
+-   The math score has modest relationship with use of Information and
+    Communication Technology (ICT).
+
+-   However, we found a overall correlation is the use of ICT outside of
+    school for leisure(ENTUSE) and for school work(HOMESCH), which is
+    around 0.648. It demonstrate that learning and playing are happening
+    at the same time when students use ICT.
+
+-   Generally male have more access to ICT than female, but their
+    reading scores are lower than female.
+
+## Socio-economic status (ESCS) versus math scores (math).
+
+Create a scatter plot of socio-economic status (ESCS) and math scores
+(math) across regions (region) and gender (sex),with linear regression
+lines to represent the linear relationship of socio-economic status and
+math scores.
+
+```{r}
+ggplot(data = dat_small,
+       mapping = aes(x = ESCS, y = math)) +
+  geom_point() +
+  geom_smooth(method = "loess") +
+  labs(x = "socio-economic status", y = "math scores") +
+  theme_bw() +
+  theme(legend.title = element_blank()) +
+  facet_grid(sex ~ Region)
+```
+
+# Alluvial plot of categorical variable
+
+The relationship of survey item (ST119Q01NA) of whether students want
+top grades in most or all courses by region (Region) and gender (sex).
+
+```{r}
+# Prepare the dataset
+dat_alluvial2 <- dat[,
+                     .(Freq = .N),
+                     by = c("Region", "sex", "ST119Q01NA")
+                     ][,
+                       ST119Q01NA := as.factor(ifelse(ST119Q01NA == "", "Missing", ST119Q01NA))]
+levels(dat_alluvial2$ST119Q01NA) <- c("Strongly disagree", "Disagree", "Agree",
+                                      "Strongly agree", "Missing")
+
+dat_alluvial2
+```
+
+```{r}
+# Plot the data
+library(ggalluvial)
+ggplot(data = dat_alluvial2,
+       aes(axis1 = Region, axis2 = ST119Q01NA, y = Freq)) +
+  scale_x_discrete(limits = c("Region", "Want top grades"),
+                   expand = c(.1, .05)) +
+  geom_alluvium(aes(fill = sex)) +
+  geom_stratum() +
+  geom_text(aes(label = after_stat(stratum)), stat = "stratum") +
+  labs(x = "Demographics", y = "Frequency", fill = "Gender") +
+  theme_bw()
+
+```
+
+-   The top left chunk with no label indicate missing values
